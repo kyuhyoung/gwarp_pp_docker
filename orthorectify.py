@@ -24,9 +24,10 @@ from utilities import remove_trailing_slash,remove_folder_ext, \
                                 
 from multiprocessing import Pool
 
-#from pprint import pprint
+from pprint import pprint
 
 import argparse
+from osgeo import gdal, osr
 
 def call_ortho(input_list):
     
@@ -53,6 +54,7 @@ def call_ortho(input_list):
     
     # Save output locally first
     new_output_name = tmp_dir + '/orthorectified/' + remove_folder_from_name(output_name)
+    #print(f'output_name : {output_name}, new_output_name : {new_output_name}'); exit()
     # create symbolic links
     os.symlink(os.path.abspath(img_name), new_img_name)
     print("\nSymbolinking ", img_name, new_img_name)
@@ -72,7 +74,7 @@ def call_ortho(input_list):
     copy_list.extend([new_img_name])
     copy_list[opidx] = new_output_name
     
-    #pprint(copy_list)
+    #print(f'copy_list : {copy_list}');  exit()
     # call orthorect
     gwarp.main(copy_list)
     
@@ -86,7 +88,7 @@ def call_ortho(input_list):
     return
 
 def batch_orthorectify(folder_img, folder_rpc, dsm_file, dem_file,
-                       folder_output, CACHE_DIR, parallel_flag = False, num_workers = 1, dsm_mask_file = None,
+                       folder_output, CACHE_DIR, is_docker, parallel_flag = False, num_workers = 1, dsm_mask_file = None,
                        image_interp = 'bilinear', output_res=0.5, dst_nodata = -9999):
     
     """
@@ -126,9 +128,23 @@ def batch_orthorectify(folder_img, folder_rpc, dsm_file, dem_file,
             rpc_file = os.path.join(folder_rpc, just_name + '.RPB')
             if os.path.isfile(rpc_file):
                 img_files_list.append(img_file)
-                rpc_files_list.append(rpc_file)
+                rpc_files_list.append(rpc_file)            
             else:
-                print("WARNING:RPC file %s does not exist for img %s. Skipping" % (rpc_file, img_file))            
+                rpc_file = os.path.join(folder_rpc, just_name + '.RPC')
+                if os.path.isfile(rpc_file):
+                    #print('aaa')
+                    img_files_list.append(img_file)
+                    rpc_files_list.append(rpc_file)            
+                else:
+                    #print('bbb')
+                    rpc_file = os.path.join(folder_rpc, just_name + '.rpc')
+                    if os.path.isfile(rpc_file):
+                        #print('ccc')
+                        img_files_list.append(img_file)
+                        rpc_files_list.append(rpc_file)            
+                    else:
+                        #print('ddd')
+                        print("WARNING:RPC file %s does not exist for img %s. Skipping" % (rpc_file, img_file))            
         else:
             img_files_list.append(img_file)
             rpc_files_list.append(None)
@@ -145,6 +161,14 @@ def batch_orthorectify(folder_img, folder_rpc, dsm_file, dem_file,
         input_mp = []
         input_mp.extend([ortho_cache_dir])
         input_mp.extend(['-RPC_DEM', dsm_file])
+
+        dem_object = gdal.Open(dsm_file)
+        dem_srs= osr.SpatialReference(wkt=dem_object.GetProjectionRef())  
+        dem_projcs = dem_srs.GetAttrValue('PROJCS')
+        if dem_projcs is not None and 'UTM' in dem_projcs:    
+            input_mp.extend(['-utm'])
+        if is_docker:
+            input_mp.extend(['-inside_docker'])
         input_mp.extend(['-low_res_dem', dem_file])        
         input_mp.extend(['-dem_interp', dem_interp])
         input_mp.extend(['-image_interp', image_interp])
@@ -161,7 +185,11 @@ def batch_orthorectify(folder_img, folder_rpc, dsm_file, dem_file,
         #input_mp.extend(['-n_workers' N_WORKERS])
         input_mp.extend(['-rpc_file', rpc_file])
         input_mp.extend([img_file])
+
+        
         input_mp_list.append(input_mp)
+
+
 
     if parallel_flag:
         assert num_workers > 1
@@ -188,6 +216,7 @@ if __name__ == '__main__':
     parser.add_argument('-dem_file', '--dem_file', type = str, help = 'dem_file', required = True)
     parser.add_argument('-folder_output', '--folder_output', type = str, help = 'output folder', required = True)
     parser.add_argument('-cache_dir', '--cache_dir', type = str, help = 'cache_dir', required = True)
+    parser.add_argument('-inside_docker', '--inside_docker', action="store_true", help = 'Is in a docker container')
     parser.add_argument('-parallel', '--parallel', action="store_true", help = 'parallel')
     parser.add_argument('-num_workers', '--num_workers', default = 1, help = 'num_workers', type = int)
     parser.add_argument('-dsm_mask_file', '--dsm_mask_file', default = None, type = str, help = 'dsm_mask_file')
@@ -198,7 +227,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     batch_orthorectify(args.folder_img, args.folder_rpc, args.dsm_file, args.dem_file,
-                       args.folder_output, args.cache_dir, parallel_flag = args.parallel,
+                       args.folder_output, args.cache_dir, args.inside_docker, parallel_flag = args.parallel,
                        num_workers = args.num_workers, dsm_mask_file = args.dsm_mask_file,
                        image_interp = args.image_interp, output_res = args.output_res,
                        dst_nodata = args.nodata)

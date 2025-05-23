@@ -19,7 +19,8 @@ from __future__ import print_function
 import argparse 
 import os, sys, glob
 import numpy as np 
-import gdal, osr
+#import gdal, osr
+from osgeo import gdal, osr
 import pyproj
 import pprint as pp 
 
@@ -38,7 +39,7 @@ import traceback
 
 #from skimage import morphology
 
-from rpc_parser import load_rpb
+from rpc_parser import load_rpb, load_rpc
     
 import pickle,cv2
 
@@ -204,9 +205,15 @@ def update_rpcs_from_rpb(raster_object, new_rpc_file):
 
     
     check_if_exists(new_rpc_file)
-    
-    new_rpcs = load_rpb(new_rpc_file)
-    
+    if new_rpc_file.lower().endswith('.rpb'):
+        is_rpb = True
+    else:
+        is_rpb = False
+    if is_rpb:
+        new_rpcs = load_rpb(new_rpc_file)
+    else:
+        new_rpcs = load_rpc(new_rpc_file)
+        
     for key in rpc_metadata:
         # RAPDR rpc class does not bother with these following keys. So it is ok if they are missing
         # in new_rpc_file
@@ -409,7 +416,7 @@ def get_ortho_grid_worker(input_list):
         #print(input_list)        
         outputRasterName, start_lon, start_lat, end_lon, end_lat, spacing_lon, spacing_lat, \
                 raster_file, dem_file, dem_interpolate_method, image_interpolate_method, dst_nodata, block_idx, \
-                save_mapping_flag, border_block_flag, rpc_file, compress_flag, dem_mask_file, dem_low_res_file = input_list
+                save_mapping_flag, border_block_flag, rpc_file, compress_flag, dem_mask_file, dem_low_res_file, is_docker = input_list
     
         # verify if we need mask file
         if dem_mask_file is not None and str(dem_mask_file) != "None":
@@ -417,8 +424,12 @@ def get_ortho_grid_worker(input_list):
             if not verify_flag:
                 print("\nDEM MASK NOT REQUIRED\n")
                 dem_mask_file = None    
-    
-        command = codePath + "/c++/gwarp++ --output %s --start_lon %s --start_lat %s --end_lon %s --end_lat %s --spacing_lon %s --spacing_lat %s " + \
+        if is_docker:
+            command = "/c++/gwarp++ --output %s --start_lon %s --start_lat %s --end_lon %s --end_lat %s --spacing_lon %s --spacing_lat %s " + \
+                  " --raster_file %s --dem_file %s --dem_interpolate_method %s --image_interpolate_method %s  --dst_nodata %s --block_idx %s " + \
+                  " --save_mapping_flag %s --border_block_flag %s --rpc_file %s --compress_flag %s --dem_mask_file %s --dtm_file %s"
+        else:
+            command = codePath + "/c++/gwarp++ --output %s --start_lon %s --start_lat %s --end_lon %s --end_lat %s --spacing_lon %s --spacing_lat %s " + \
                   " --raster_file %s --dem_file %s --dem_interpolate_method %s --image_interpolate_method %s  --dst_nodata %s --block_idx %s " + \
                   " --save_mapping_flag %s --border_block_flag %s --rpc_file %s --compress_flag %s --dem_mask_file %s --dtm_file %s"
         # note block_idx is set to 0 for worker cpp function
@@ -426,7 +437,7 @@ def get_ortho_grid_worker(input_list):
                               raster_file, dem_file, dem_interpolate_method, image_interpolate_method, dst_nodata, block_idx, \
                               save_mapping_flag, border_block_flag, rpc_file, compress_flag, str(dem_mask_file), dem_low_res_file  ))
         
-        print(command)
+        print(f'command : {command}')
     
         os.system(command)
         
@@ -437,7 +448,7 @@ def get_ortho_grid_worker(input_list):
             
     return 
         
-def get_ortho_grid(outputRasterName, utm_code, raster_file, dem_file, dem_low_res_file, dem_interpolate_method, image_interpolate_method, parallel_flag,
+def get_ortho_grid(outputRasterName, utm_code, raster_file, dem_file, dem_low_res_file, dem_interpolate_method, image_interpolate_method, parallel_flag, is_docker,
                    output_resolution = None, n_workers = 12, gdal_merge = None, dst_nodata = -9999, save_mapping_flag = False, rpc_file = None,
                    compress_flag = False, dem_mask_file = None):
     halfshift = 0.5
@@ -594,7 +605,7 @@ def get_ortho_grid(outputRasterName, utm_code, raster_file, dem_file, dem_low_re
     print("\nCorners of the output raster are ")
     pp.pprint(list(zip(raster_corners_lon, raster_corners_lat)))
     print("\nOutput resolution in degrees is %s, %s\n" % (spacing_lon, spacing_lat))
-    
+    #print(f'parallel_flag : {parallel_flag}');  exit() 
     if parallel_flag:
         # We split the lon lat grid into blocks. The number of points in each block is 2000x2000. In practice
         # we add padding to the block to account for height effects
@@ -657,7 +668,7 @@ def get_ortho_grid(outputRasterName, utm_code, raster_file, dem_file, dem_low_re
                 outputRasterName_worker = os.path.join(outputRasterFolder_workers, outputRasterName_worker)
                 blk_list = [outputRasterName_worker, start_lon, start_lat, end_lon, end_lat, spacing_lon, spacing_lat, raster_file,
                             dem_file, dem_interpolate_method, image_interpolate_method, dst_nodata, block_idx, save_mapping_flag,
-                            border_block_flag, rpc_file, compress_flag, dem_mask_file, dem_low_res_file]
+                            border_block_flag, rpc_file, compress_flag, dem_mask_file, dem_low_res_file, is_docker]
                 input_mp_list.append(blk_list)
                 
                 block_idx += 1
@@ -772,7 +783,7 @@ def get_ortho_grid(outputRasterName, utm_code, raster_file, dem_file, dem_low_re
                     
         input_mp_list = [outputRasterName, start_lon, start_lat, end_lon, end_lat, spacing_lon, spacing_lat, raster_file,
                          dem_file, dem_interpolate_method, image_interpolate_method, dst_nodata, 0, save_mapping_flag, True,
-                         rpc_file, compress_flag, dem_mask_file, dem_low_res_file]
+                         rpc_file, compress_flag, dem_mask_file, dem_low_res_file, is_docker]
         get_ortho_grid_worker(input_mp_list)
     
     
@@ -839,6 +850,8 @@ def main(argv=None):
     
     parser.add_argument('-utm', help = 'flag to specify if dem is in utm. If so a epsg4326 dem is created from it', action='store_true')
     
+    parser.add_argument('-inside_docker', help = 'flag if this is in docker container', action='store_true')
+    
     parser.add_argument('-dem_interp', help = 'dem interpolation - one of near, bilinear or cubic', default = 'bilinear')
 
     parser.add_argument('-image_interp', help = 'raster interpolation - one of near or bilinear', default = 'bilinear')
@@ -883,6 +896,7 @@ def main(argv=None):
     '''
     Output raster name
     '''
+    #print(f'args.output : {args.output}');  exit()
     if args.output is None :
         
         # We add _ortho at the end of the name of the input tif. We create a folder called orthorectified in the same folder as the input image
@@ -906,6 +920,7 @@ def main(argv=None):
     
     dem_epsg4326 = None
     # If DEM is none, then use standard gdalwarp
+    #print(f'args.RPC_DEM : {args.RPC_DEM}');    exit()
     if args.RPC_DEM is None:    
         command =   "set GDAL_CACHEMAX=3000;set GDAL_SWATH_SIZE=3073741824;set GDAL_NUM_THREADS=2; " \
                     "gdalwarp -to RPC_DEM_MISSING_VALUE=0 -co COMPRESS=PACKBITS -co INTERLEAVE=BAND -co BIGTIFF=YES " \
@@ -915,11 +930,11 @@ def main(argv=None):
         os.system(command)
     
     else:   
-        
+        #print(f'args.RPC_DEM : {args.RPC_DEM}');    exit()
         dem_object = gdal.Open(args.RPC_DEM)
         dem_srs= osr.SpatialReference(wkt=dem_object.GetProjectionRef())  
         dem_projcs = dem_srs.GetAttrValue('PROJCS')
-            
+        #print(f'dem_projcs : {dem_projcs}, args.utm : {args.utm}');    exit()    
         if args.utm: 
             ''' 
             convert dem or dsm from utm to epsg4326 i.e. longitude, latitude 
@@ -957,9 +972,9 @@ def main(argv=None):
             dem_epsg4326 = args.RPC_DEM
 
         dem_object = None 
-        
+        #print(f'dem_epsg4326 : {dem_epsg4326}');    exit(0) 
         get_ortho_grid(outputRasterName, dem_srs_epsg, args.input_raster, 
-                       dem_epsg4326, args.low_res_dem, args.dem_interp, args.image_interp, args.parallel,
+                       dem_epsg4326, args.low_res_dem, args.dem_interp, args.image_interp, args.parallel, args.inside_docker,
                        args.output_res, args.n_workers, args.gdal_merge, args.dst_nodata, args.save_mapping_flag,
                        args.rpc_file, args.compress_flag, args.dem_mask_file)
         

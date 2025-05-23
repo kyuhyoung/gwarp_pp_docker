@@ -86,9 +86,57 @@ def read_file_into_dict(rpcfile):
     return d
 
 
+
+def load_rpc(rpcfile):
+    print(f'rpcfile : {rpcfile}') 
+    data = {}
+    with open(rpcfile, 'r') as f:
+        for line in f:
+            line = line.strip()
+            if not line or ':' not in line:
+                continue
+            key, val = line.split(':', 1)
+            key = key.strip()
+            val = val.strip()
+            try:
+                data[key] = float(val)
+            except ValueError:
+                # if you have non‐numeric fields, leave as string:
+                data[key] = val
+    #print(f'data : {data}');  exit()
+    rpc_coefs = {}
+    #p = re.compile('\(' + '([^,]+),'*19 + '([^,]+),*\)')
+    for key, _ in RPB_KEYS:
+        #if key not in data:
+        #    continue
+        #print(f'key : {key}')
+        if key.endswith('COEFF'):
+            poly_coefs = [
+                v
+                for _, v in sorted(
+                    ((int(k.rsplit('_',1)[1]), v) for k, v in data.items() if k.upper().startswith(key)),
+                    key=lambda x: x[0]
+                )
+            ]
+            #print(f'poly_coefs : {poly_coefs}');  exit()
+            poly_coefs = np.array(poly_coefs)
+            rpc_coefs[key] = poly_coefs
+        else:
+            if key not in data:
+                continue
+            rpc_coefs[key] = float(data[key])
+    '''
+    rpc_coefs['satId'] = d['satId']
+    rpc_coefs['SpecId'] = d['SpecId']
+    rpc_coefs['bandId'] = d['bandId']
+    '''
+    #print(f'rpc_coefs : {rpc_coefs}');  exit()
+    return rpc_coefs
+
 def load_rpb(rpcfile):
     
     d = read_file_into_dict(rpcfile)
+    #print(f'd : {d}');  exit()
     rpc_coefs = {}
     p = re.compile('\(' + '([^,]+),'*19 + '([^,]+),*\)')
     for key, rpb_key in RPB_KEYS:

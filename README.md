@@ -40,6 +40,7 @@ env=<Name of anaconda environment>
 
 $ conda activate $env
 
+RUN apt-get update && apt-get install -y --no-install-recommends gdal-bin libgdal-dev python3-gdal 
 $ bash compile.sh
 ```
 ### Run orthorectification

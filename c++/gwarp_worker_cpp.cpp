@@ -288,7 +288,8 @@ bool get_ortho_grid_worker (std::string outputRasterName, double *start_lon, dou
 		}
 		 */
 		// open dem dataset
-		poDemDataset = (GDALDataset *) GDALOpen(dem_file.c_str(), GA_ReadOnly);
+		//std::cout << "dem_file : " << dem_file << std::endl;    exit(0);
+        poDemDataset = (GDALDataset *) GDALOpen(dem_file.c_str(), GA_ReadOnly);
 
 		if( poDemDataset == NULL )
 		{
@@ -365,7 +366,7 @@ bool get_ortho_grid_worker (std::string outputRasterName, double *start_lon, dou
 
         /* Skip if dsm does not cover block. Otherwise the rpc transformer assumes
          * 0 for NaNs and creates ghosts at the boundaries of the dem and the image.*/
-
+        std::cout << "start_lon[0] : " << start_lon[0] << ", start_lat[0] : " << start_lat[0] << ", dem_top_left_lon_lat[0] : " << dem_top_left_lon_lat[0] << ", dem_top_left_lon_lat[1] : " << dem_top_left_lon_lat[1] << std::endl;    exit(0);
         if (start_lon[0] < dem_top_left_lon_lat[0] || start_lat[0] > dem_top_left_lon_lat[1])
 		{
             printf("\nDEM does not cover block (start_lon,start_lat=%lf,%lf dem_corners=%lf,%lf)\n", start_lon[0], start_lat[0], dem_top_left_lon_lat[0], dem_top_left_lon_lat[1]);
@@ -593,14 +594,14 @@ bool get_ortho_grid_worker (std::string outputRasterName, double *start_lon, dou
 		if (!valid_flag)
 		{
 		  printf("\nNo valid points for block #%d\n", block_idx[0]);
-		  printf("\nFinished processing block #%d\n", block_idx[0]);
+		  printf("\nFinished processing block bbb # %d\n", block_idx[0]);
 		  return 0;
 		}
 		int outputWidth = end_col_final - start_col_final;
 		int outputHeight = end_row_final - start_row_final;
 
 		GDALDataType outputDataType = poRasterDataset->GetRasterBand(1)->GetRasterDataType();
-
+        //std::cout << "outputDataType : " << outputDataType << std::endl; exit(0);
 		//printf("%s",GDALGetDataTypeName(outputDataType));
 		int dst_nodata_int = (int) dst_nodata[0];
 
@@ -620,8 +621,8 @@ bool get_ortho_grid_worker (std::string outputRasterName, double *start_lon, dou
 		bool tiled_flag = 0;
 
 		if (outputDataType == GDT_Int16)
-		{
-
+		{   
+            std::cout << "aaaa" << std::endl;          
 			std::vector<int16_t> outBandsAsArray(nbands*outputWidth*outputHeight, dst_nodata_int);
 			//printf("\nCreating output ortho grid\n");
 			bool flag = createOrthoImage(start_row_final, end_row_final, start_col_final, end_col_final,
@@ -637,7 +638,7 @@ bool get_ortho_grid_worker (std::string outputRasterName, double *start_lon, dou
 												raster_corners_lon, raster_corners_lat,
 												spacing_lon, spacing_lat, poDemDataset,
 												outBandsAsArray, (int16_t) dst_nodata_int, compress_flag);
-
+            std::cout << "flag : " << flag << ", writeSuccess : " << writeSuccess << ", outputRasterName : " << outputRasterName << std::endl;
 			if (save_mapping_flag[0])
 			{
 
@@ -685,6 +686,7 @@ bool get_ortho_grid_worker (std::string outputRasterName, double *start_lon, dou
 		}
 		else if (outputDataType == GDT_Byte)
 		{
+            std::cout << "bbbb" << std::endl;          
 
 			std::vector<uint8_t> outBandsAsArray(nbands*outputWidth*outputHeight, dst_nodata_int);
 			//printf("\nCreating output ortho grid\n");
@@ -717,6 +719,7 @@ bool get_ortho_grid_worker (std::string outputRasterName, double *start_lon, dou
 		}
 		else if (outputDataType == GDT_Float32)
 		{
+            std::cout << "cccc" << std::endl;          
 
 			std::vector<float> outBandsAsArray(nbands*outputWidth*outputHeight, dst_nodata_int);
 			//printf("\nCreating output ortho grid\n");
@@ -749,6 +752,7 @@ bool get_ortho_grid_worker (std::string outputRasterName, double *start_lon, dou
 		}
 		else if (outputDataType == GDT_Float64)
 		{
+            std::cout << "dddd" << std::endl;          
 
 			std::vector<double> outBandsAsArray(nbands*outputWidth*outputHeight, dst_nodata_int);
 			//printf("\nCreating output ortho grid\n");
@@ -799,7 +803,7 @@ bool get_ortho_grid_worker (std::string outputRasterName, double *start_lon, dou
 
 		// destroy variables on heap
 		delete rpcinfo;
-		printf("\nFinished processing block #%d\n", block_idx[0]);
+		printf("\nFinished processing block aaa # %d\n", block_idx[0]);
 		return 1;
 	}
 	catch(std::exception &err)
@@ -893,13 +897,14 @@ int main(int argc, char **argv)
 		return 0;
 
 	}
-
-	bool flag = get_ortho_grid_worker (outputRasterName, &start_lon, &end_lon,
+    //std::cout << "outputRasterName : " << outputRasterName << ", dem_file : " << dem_file << ", dtm_file : " << dtm_file << std::endl;   exit(0);
+	//*
+    bool flag = get_ortho_grid_worker (outputRasterName, &start_lon, &end_lon,
 								  	   &start_lat, &end_lat, &spacing_lon, &spacing_lat,
 									   raster_file, dem_file, dem_interpolate_method,
 									   image_interpolate_method, &dst_nodata, &block_idx, &save_mapping_flag,
 									   &border_block_flag, rpc_file, &compress_flag, dem_mask_file, dtm_file);
-
+    //*/
 
 }
 
