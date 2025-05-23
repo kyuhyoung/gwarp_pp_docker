@@ -1,0 +1,1 @@
+tiles/row_0000000_height_2000/col_0000000_width_2000/config.json
