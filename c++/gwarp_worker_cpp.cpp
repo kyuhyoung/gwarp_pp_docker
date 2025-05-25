@@ -24,6 +24,9 @@ Date: 11/24/2020
 #include <boost/program_options.hpp> // for nice argument parsing
 #include <vector>
 #include <cstdint> //uint16_t
+#include <unordered_map>
+#include <algorithm>
+
 
 void convert_pixel_coords_to_projected_coords(double col, double row, std::vector<double> geotransform, std::vector <double>&  proj_x_y)
 {
@@ -296,6 +299,13 @@ bool get_ortho_grid_worker (std::string outputRasterName, double *start_lon, dou
 			std::cout << "ERROR IN OPENING DEM DATASET" << std::endl;
 			abort();
 		}
+		// The dem can have no data value as negative integers if it is stored as uint16.
+		double no_data_height_value = (double)poDemDataset->GetRasterBand(1)->GetNoDataValue();
+		// Height and width of dem
+		int dem_width = poDemDataset->GetRasterXSize();
+		int dem_height = poDemDataset->GetRasterYSize();
+        GDALRasterBand  *poDemBand;
+        poDemBand = poDemDataset->GetRasterBand( 1 );
 
 		poMaskDemDataset = NULL;
 		if (dem_mask_file != "None")
@@ -308,7 +318,7 @@ bool get_ortho_grid_worker (std::string outputRasterName, double *start_lon, dou
 				abort();
 			}
 		}
-
+        double H_most = no_data_height_value;
 		poDtmDataset = NULL;
 		if (dtm_file != "None")
 		{
@@ -320,15 +330,78 @@ bool get_ortho_grid_worker (std::string outputRasterName, double *start_lon, dou
 				abort();
 			}
 		}
+        else
+        {
+            std::cout << "dem_width : " << dem_width << ", dem_height : " << dem_height << std::endl;    //exit(0);
+            // Read entire DEM into a flat vector
+            std::vector<double> dem_values(dem_width * dem_height);
+            int readflag = poDemBand->RasterIO(
+                GF_Read,
+                0, 0, dem_width, dem_height,
+                dem_values.data(),
+                dem_width, dem_height,
+                GDT_Float64,
+                0, 0
+            );
+            size_t nan_count = std::count_if(
+                dem_values.begin(), dem_values.end(),
+                [](double x){ return std::isnan(x); }
+            );
+            //std::cout << "Number of NaNs: " << nan_count << " / " << dem_values.size() << std::endl;   exit(0);    //  536015 / 1782852
+            //std::cout << "readflag : " << readflag << std::endl;    exit(0);
+            double minV =  std::numeric_limits<double>::infinity(), maxV = -std::numeric_limits<double>::infinity();
 
+            // Flag to detect if we saw at least one non-NaN
+            bool found = false;
+            for (double x : dem_values) {
+                if (std::isnan(x))
+                    continue;
+                if (!found) {
+                    // first valid value
+                    minV = maxV = x;
+                    found = true;
+                } 
+                else {
+                    if (x < minV) minV = x;
+                    if (x > maxV) maxV = x;
+                }
+            }
+                                                                                                            if (found) {
+                                                                                                                std::cout << "min (excluding NaN) = " << minV << ", max (excluding NaN) = " << maxV << "\n";
+                                                                                                            } 
+                                                                                                            else {
+                                                                                                                std::cout << "No valid (non-NaN) entries in vector.\n";
+            }
+            //exit(0);
+            double minF = std::floor(minV);
+            double binSize = 0.5;
+            // 2) Create a map from binIndex -> count
+            std::unordered_map<int,int> binCounts;
+            for (double v : dem_values) {
+                if (v == no_data_height_value || std::isnan(v))
+                    continue;
+                int binIdx = int(std::floor((v - minF)/ binSize));
+                ++binCounts[binIdx];
+            }
 
-		// Height and width of dem
-		int dem_width = poDemDataset->GetRasterXSize();
-		int dem_height = poDemDataset->GetRasterYSize();
+            // 3) Find the bin with the max count
+            int bestBin = 0, bestCount = 0;
+            for (auto &p : binCounts) {
+                if (p.second > bestCount) {
+                    bestCount = p.second;
+                    bestBin   = p.first;
+                }
+            }
+            //std::cout << "bestBin : " << bestBin << ", bestCount : " << bestCount << std::endl;  exit(0);     //  bestBin : 57, bestCount : 139706
+            // 4) Recover an H_most value — for simplicity, take the bin center
+            H_most = (bestBin + 0.5) * binSize;
+            //std::cout << "H_most : " << H_most << std::endl;    exit(0);    // 28.75
+        }
 
+        /*
 		// The dem can have no data value as negative integers if it is stored as uint16.
 		double no_data_height_value = (double)poDemDataset->GetRasterBand(1)->GetNoDataValue();
-
+        */
 		/* Declaring it as GDALRPCInfo rpcinfo could blow out the stack memory */
 		GDALRPCInfo *rpcinfo = new GDALRPCInfo;
 		char *papszOptions = NULL;
@@ -366,7 +439,7 @@ bool get_ortho_grid_worker (std::string outputRasterName, double *start_lon, dou
 
         /* Skip if dsm does not cover block. Otherwise the rpc transformer assumes
          * 0 for NaNs and creates ghosts at the boundaries of the dem and the image.*/
-        std::cout << "start_lon[0] : " << start_lon[0] << ", start_lat[0] : " << start_lat[0] << ", dem_top_left_lon_lat[0] : " << dem_top_left_lon_lat[0] << ", dem_top_left_lon_lat[1] : " << dem_top_left_lon_lat[1] << std::endl;    exit(0);
+        std::cout << "start_lon[0] : " << start_lon[0] << ", start_lat[0] : " << start_lat[0] << ", dem_top_left_lon_lat[0] : " << dem_top_left_lon_lat[0] << ", dem_top_left_lon_lat[1] : " << dem_top_left_lon_lat[1] << std::endl;    //exit(0);
         if (start_lon[0] < dem_top_left_lon_lat[0] || start_lat[0] > dem_top_left_lon_lat[1])
 		{
             printf("\nDEM does not cover block (start_lon,start_lat=%lf,%lf dem_corners=%lf,%lf)\n", start_lon[0], start_lat[0], dem_top_left_lon_lat[0], dem_top_left_lon_lat[1]);
@@ -419,10 +492,10 @@ bool get_ortho_grid_worker (std::string outputRasterName, double *start_lon, dou
         double lon;
         double lat;
 
-
+        /*
         GDALRasterBand  *poDemBand;
         poDemBand = poDemDataset->GetRasterBand( 1 );
-
+        */
         GDALRasterBand *poMaskDemBand;
         if ( dem_mask_file != "None" )
         {
@@ -432,13 +505,23 @@ bool get_ortho_grid_worker (std::string outputRasterName, double *start_lon, dou
         GDALRasterBand *poDtmBand;
 		std::vector<double> dtmGeoTransform(6,0);
 		double no_data_dtm_value;
+ 		int dtm_width, dtm_height;
+        std::cout << "bbbb" << std::endl;  //exit(0); 
         if ( dtm_file != "None" )
         {
         	poDtmBand = poDtmDataset->GetRasterBand( 1 );
     		poDtmDataset->GetGeoTransform(&dtmGeoTransform[0]);
     		no_data_dtm_value = (double)poDtmBand->GetNoDataValue();
+        		// Height and width of dtm
+		    dtm_width = poDtmDataset->GetRasterXSize();
+		    dtm_height = poDtmDataset->GetRasterYSize();
         }
-
+		else
+        {
+        // Height and width of dtm
+		    dtm_width = dem_width;  dtm_height = dem_height;
+    		no_data_dtm_value = no_data_height_value;
+        }
         int image_pre_ortho_width = poRasterDataset->GetRasterXSize();
         int image_pre_ortho_height = poRasterDataset->GetRasterYSize();
         int nbands = poRasterDataset->GetRasterCount();
@@ -461,11 +544,12 @@ bool get_ortho_grid_worker (std::string outputRasterName, double *start_lon, dou
         int16_t dtm_height_val;
         double dtm_col;
         double dtm_row;
-
+        int n_val = 0, n_inval = 0;
+        /*
 		// Height and width of dtm
 		int dtm_width = poDtmDataset->GetRasterXSize();
 		int dtm_height = poDtmDataset->GetRasterYSize();
-
+        */
 		//#pragma omp parallel for // Causes segmentation fault for large array
 		for (int j = 0; j < ngrid_rows; j++)
 		{
@@ -480,10 +564,13 @@ bool get_ortho_grid_worker (std::string outputRasterName, double *start_lon, dou
 
 				if ( dem_col < 0 ||  dem_col >= dem_width || dem_row < 0 ||  dem_row >= dem_height)
 				{
+                    n_inval++;
 					continue;
+
 				}
 				else
 				{
+                    n_val++;
 					readflag = poDemBand->RasterIO(GF_Read, floor(dem_col), floor(dem_row), 1, 1, &height[twod_idx], 1, 1, GDT_Float64, 0, 0);
 
 					if ( dem_mask_file != "None" )
@@ -499,7 +586,6 @@ bool get_ortho_grid_worker (std::string outputRasterName, double *start_lon, dou
 
 					if (height[twod_idx] != no_data_height_value && ! std::isnan(height[twod_idx]))
 					{
-
 						if ( dtm_file != "None ")
 						{
 							// Load height value from dtm and calculate num_wallpts accordingly
@@ -528,6 +614,35 @@ bool get_ortho_grid_worker (std::string outputRasterName, double *start_lon, dou
 								}
 							}
 						}
+                        else
+                        {
+                            // No DTM file → use DEM height or H_most
+                            double H_dem = height[twod_idx];
+                            if ( H_dem == no_data_height_value
+                                || std::isnan(H_dem)
+                                || H_dem > H_most )
+                            {
+                                dtm_height_val = H_most;
+                            }
+                            else
+                            {
+                                dtm_height_val = H_dem;
+                            }
+							if ((double) dtm_height_val == no_data_dtm_value || std::isnan(dtm_height_val)) // check if we have valid dtm value
+							{
+								std::cout << "WARNING NO DTM FOUND FOR LON: " << lon << " , LAT: " << lat << std::endl;
+								std::cout << "WARNING NO DTM FOUND FOR LON: " << dtm_col << " , LAT: " << dtm_row << std::endl;
+								std::cout << "WARNING NO DTM FOUND : " << dtm_height_val <<  std::endl;
+							}
+							else if (1.0*(double)(dtm_height_val) < height[twod_idx]) // check if dem > dtm. If so update num_wallpts
+							{
+								num_wallpts = ceil((height[twod_idx] - (1.0*(double)(dtm_height_val)))/wall_step_size);
+								if (num_wallpts <= 0)
+								{
+									num_wallpts = 1;
+								}
+							}
+                        }
 						//std::cout << num_wallpts << std::endl;
 				        std::vector<double> height_walls(num_wallpts, 0);
 				        std::vector<double> lon_walls(num_wallpts, 0);
@@ -590,6 +705,8 @@ bool get_ortho_grid_worker (std::string outputRasterName, double *start_lon, dou
 			}
 
 		}
+        
+        std::cout << "n_inval : " << n_inval << ", n_val : " << n_val << std::endl; exit(0);
 
 		if (!valid_flag)
 		{

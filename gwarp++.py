@@ -455,7 +455,6 @@ def get_ortho_grid(outputRasterName, utm_code, raster_file, dem_file, dem_low_re
     """
     function that prepares blocks and grids for orthorectification
     """
-    
     if parallel_flag and gdal_merge is None:
         raise Exception('When using parallel, need to supply gdal_merge.py path')
 
@@ -519,23 +518,28 @@ def get_ortho_grid(outputRasterName, utm_code, raster_file, dem_file, dem_low_re
         
     if 0 in flags:
         rpc_error = -0.004
-        print("Trying low res dem\n")
-        
-    while (0 in flags):
+        #print("Trying low res dem\n")
+        if dem_low_res_file:
+            print("Trying low res dem\n")
+        else:
+            # Skip the low-res DEM retry entirely
+            print("Skipping low-res DEM step\n")
+    if dem_low_res_file:
+        while (0 in flags):
                 
-        if rpc_error >= 0.1:
-            break
+            if rpc_error >= 0.1:
+                break
             
-        rpc_error = rpc_error + 0.005
+            rpc_error = rpc_error + 0.005
         
-        rpc_transformer_options_list = ['METHOD=RPC','RPC_PIXEL_ERROR_THRESHOLD=' + str(rpc_error),'RPC_DEM=%s' % dem_low_res_file, 
+            rpc_transformer_options_list = ['METHOD=RPC','RPC_PIXEL_ERROR_THRESHOLD=' + str(rpc_error),'RPC_DEM=%s' % dem_low_res_file, 
                                         'RPC_DEMINTERPOLATION=%s' % dem_interpolate_method,
                                         'RPC_DEM_MISSING_VALUE='+rpc_dem_missing_value]            
-        # Create rpc based transformer
-        rpc_transformer = gdal.Transformer(raster_obj_rpc, None, rpc_transformer_options_list)
+            # Create rpc based transformer
+            rpc_transformer = gdal.Transformer(raster_obj_rpc, None, rpc_transformer_options_list)
         
-        # Corners of raster in orthorectified space
-        raster_corners_lon_lat, flags  = rpc_transformer.TransformPoints(0, raster_corners_col_row)
+            # Corners of raster in orthorectified space
+            raster_corners_lon_lat, flags  = rpc_transformer.TransformPoints(0, raster_corners_col_row)
         
     if 0 in flags:   
         
