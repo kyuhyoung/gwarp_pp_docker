@@ -27,6 +27,29 @@ Date: 11/24/2020
 #include <unordered_map>
 #include <algorithm>
 
+#include <typeinfo>    // for std::type_info, typeid()
+#ifdef __GNUG__
+#  include <cxxabi.h> // for __cxa_demangle
+#  include <memory>
+#endif
+
+template<typename T>
+std::string type_name(const T& x) {
+    const std::type_info& ti = typeid(x);
+    #ifdef __GNUG__
+        int status = 0;
+        // demangle() returns a malloc’d C-string
+        std::unique_ptr<char,void(*)(void*)> demangled {
+            abi::__cxa_demangle(ti.name(), nullptr, nullptr, &status), std::free
+        };
+        return (status==0 ? demangled.get() : ti.name());
+    #else
+        return ti.name();  // on MSVC this is already unmangled
+    #endif
+}
+
+
+
 
 void convert_pixel_coords_to_projected_coords(double col, double row, std::vector<double> geotransform, std::vector <double>&  proj_x_y)
 {
@@ -58,19 +81,20 @@ bool createOrthoImage(int start_row_final, int end_row_final, int start_col_fina
 					  std::vector<float>& output_raster_coord_map, bool save_mapping_flag)
 {
 	//#pragma omp parallel for // Causes segmentation fault for large array
-	int x,y, twod_idx, clip_twod_idx, agnostic_idx;
+	//std::cout << "image_interpolate_method : " << image_interpolate_method << std::endl;    exit(0);
+    int x,y, twod_idx, clip_twod_idx, agnostic_idx;
 	float w_x, w_y, x_f, y_f;
 	T img00, img01, img10, img11;
 	int x0, x1, y0, y1;
 	int lookup_idx;
 	int readflag;
 	double imgval;
-
+    int n_val = 0, n_inval = 0;
 	for (int j = start_row_final; j < end_row_final; j++)
 	{
 		for (int i = start_col_final; i < end_col_final; i++)
 		{
-			twod_idx = (j*ngrid_cols) + i;
+			twod_idx = (j * ngrid_cols) + i;
 			if (valid[twod_idx])
 			{
 				agnostic_idx = ((j - start_row_final)*outputWidth) + (i - start_col_final);
@@ -82,21 +106,23 @@ bool createOrthoImage(int start_row_final, int end_row_final, int start_col_fina
 
 				x = image_grid_col[twod_idx];
 				y = image_grid_row[twod_idx];
-				lookup_idx = (x*image_pre_ortho_height) + y;
+				lookup_idx = (x * image_pre_ortho_height) + y;
 				if ( (lookup[lookup_idx] - height[twod_idx]) > height_thresh_filter_metres )
 				{
 					valid[twod_idx] = 0;
+                    n_inval++;
 				}
 				else
 				{
+                    n_val++;
 					if (save_mapping_flag)
-						output_raster_coord_map[agnostic_idx + 2*(outputWidth*outputHeight)] =  1;
+						output_raster_coord_map[agnostic_idx + 2 * (outputWidth * outputHeight)] =  1;
 
 					if (image_interpolate_method == "near")
 					{
 						for (int bandIdx = 1; bandIdx <= nbands; bandIdx++)
 						{
-							clip_twod_idx = ((bandIdx -1)*outputWidth*outputHeight) + ((j - start_row_final)*outputWidth) + (i - start_col_final);
+							clip_twod_idx = ((bandIdx -1) * outputWidth * outputHeight) + ((j - start_row_final) * outputWidth) + (i - start_col_final);
 							readflag = poRasterDataset->GetRasterBand(bandIdx)->RasterIO(GF_Read, x, y, 1, 1, &outBandsAsArray[clip_twod_idx], 1, 1, outputDataType, 0, 0);
 						}
 					}
@@ -138,6 +164,7 @@ bool createOrthoImage(int start_row_final, int end_row_final, int start_col_fina
 
 							imgval = ( (((double)(img00))*(1.0 - w_x)*(1.0 - w_y)) + (((double)(img01))*w_x*(1.0 - w_y)) +
 									   (((double)(img10))*(1.0 - w_x)*w_y) + (((double)(img11))*w_x*w_y) );
+                            //std::cout << "imgval : " << imgval << std::endl;    exit(0);             
 
 							/*if (outputDataType == GDT_Int16 ||  outputDataType == GDT_UInt16 || outputDataType == GDT_Int32
 									|| outputDataType == GDT_Byte || outputDataType == GDT_UInt32)
@@ -152,9 +179,13 @@ bool createOrthoImage(int start_row_final, int end_row_final, int start_col_fina
 
 				}
 			}
-
+            else
+            {
+                n_inval++;
+            }
 		}
 	}
+    //std::cout << "n_val : " << n_val << ", n_inval : " << n_inval << std::endl; exit(0);
 
 	return 1;
 
@@ -366,11 +397,11 @@ bool get_ortho_grid_worker (std::string outputRasterName, double *start_lon, dou
                     if (x > maxV) maxV = x;
                 }
             }
-                                                                                                            if (found) {
-                                                                                                                std::cout << "min (excluding NaN) = " << minV << ", max (excluding NaN) = " << maxV << "\n";
-                                                                                                            } 
-                                                                                                            else {
-                                                                                                                std::cout << "No valid (non-NaN) entries in vector.\n";
+                                                                                                                    if (found) {
+                                                                                                                        std::cout << "min (excluding NaN) = " << minV << ", max (excluding NaN) = " << maxV << "\n";
+                                                                                                                    } 
+                                                                                                                    else {
+                std::cout << "No valid (non-NaN) entries in vector.\n";
             }
             //exit(0);
             double minF = std::floor(minV);
@@ -506,7 +537,7 @@ bool get_ortho_grid_worker (std::string outputRasterName, double *start_lon, dou
 		std::vector<double> dtmGeoTransform(6,0);
 		double no_data_dtm_value;
  		int dtm_width, dtm_height;
-        std::cout << "bbbb" << std::endl;  //exit(0); 
+        //std::cout << "bbbb" << std::endl;  //exit(0); 
         if ( dtm_file != "None" )
         {
         	poDtmBand = poDtmDataset->GetRasterBand( 1 );
@@ -586,8 +617,10 @@ bool get_ortho_grid_worker (std::string outputRasterName, double *start_lon, dou
 
 					if (height[twod_idx] != no_data_height_value && ! std::isnan(height[twod_idx]))
 					{
-						if ( dtm_file != "None ")
-						{
+                        //std::cout << "type_name(dtm_file) : " << type_name(dtm_file) << std::endl;    exit(0);
+						if ( dtm_file != "None")
+						{   
+                            //std::cout << "aaaaa" << std::endl;  exit(0);
 							// Load height value from dtm and calculate num_wallpts accordingly
 							convert_projected_coords_to_pixel_coords(lon, lat, dtmGeoTransform, &dtm_col, &dtm_row);
 
@@ -616,6 +649,7 @@ bool get_ortho_grid_worker (std::string outputRasterName, double *start_lon, dou
 						}
                         else
                         {
+                            //std::cout << "bbbbb" << std::endl;  exit(0);
                             // No DTM file → use DEM height or H_most
                             double H_dem = height[twod_idx];
                             if ( H_dem == no_data_height_value
@@ -706,7 +740,7 @@ bool get_ortho_grid_worker (std::string outputRasterName, double *start_lon, dou
 
 		}
         
-        std::cout << "n_inval : " << n_inval << ", n_val : " << n_val << std::endl; exit(0);
+        //std::cout << "n_inval : " << n_inval << ", n_val : " << n_val << std::endl; exit(0);
 
 		if (!valid_flag)
 		{
@@ -718,7 +752,7 @@ bool get_ortho_grid_worker (std::string outputRasterName, double *start_lon, dou
 		int outputHeight = end_row_final - start_row_final;
 
 		GDALDataType outputDataType = poRasterDataset->GetRasterBand(1)->GetRasterDataType();
-        //std::cout << "outputDataType : " << outputDataType << std::endl; exit(0);
+        std::cout << "outputDataType : " << outputDataType << std::endl; exit(0);
 		//printf("%s",GDALGetDataTypeName(outputDataType));
 		int dst_nodata_int = (int) dst_nodata[0];
 
