@@ -397,10 +397,10 @@ bool get_ortho_grid_worker (std::string outputRasterName, double *start_lon, dou
                     if (x > maxV) maxV = x;
                 }
             }
-                                                                                                                    if (found) {
-                                                                                                                        std::cout << "min (excluding NaN) = " << minV << ", max (excluding NaN) = " << maxV << "\n";
-                                                                                                                    } 
-                                                                                                                    else {
+            if (found) {
+                std::cout << "min (excluding NaN) = " << minV << ", max (excluding NaN) = " << maxV << "\n";
+            }
+            else {
                 std::cout << "No valid (non-NaN) entries in vector.\n";
             }
             //exit(0);
@@ -426,6 +426,7 @@ bool get_ortho_grid_worker (std::string outputRasterName, double *start_lon, dou
             //std::cout << "bestBin : " << bestBin << ", bestCount : " << bestCount << std::endl;  exit(0);     //  bestBin : 57, bestCount : 139706
             // 4) Recover an H_most value — for simplicity, take the bin center
             H_most = (bestBin + 0.5) * binSize;
+            //H_most = minV;
             //std::cout << "H_most : " << H_most << std::endl;    exit(0);    // 28.75
         }
 
@@ -752,7 +753,7 @@ bool get_ortho_grid_worker (std::string outputRasterName, double *start_lon, dou
 		int outputHeight = end_row_final - start_row_final;
 
 		GDALDataType outputDataType = poRasterDataset->GetRasterBand(1)->GetRasterDataType();
-        std::cout << "outputDataType : " << outputDataType << std::endl; exit(0);
+        //std::cout << "outputDataType b4 : " << outputDataType << std::endl; //exit(0);
 		//printf("%s",GDALGetDataTypeName(outputDataType));
 		int dst_nodata_int = (int) dst_nodata[0];
 
@@ -765,7 +766,9 @@ bool get_ortho_grid_worker (std::string outputRasterName, double *start_lon, dou
 				outputDataType = GDT_Int16;
 		}
 
-		std::vector<float> output_raster_coord_map(3*outputWidth*outputHeight, (float)dst_nodata[0]);
+        //std::cout << "outputDataType after : " << outputDataType << std::endl; //exit(0);
+        //std::cout << "nbands : " << nbands << std::endl; exit(0);
+		std::vector<float> output_raster_coord_map(3 * outputWidth * outputHeight, (float)dst_nodata[0]);
 		// free memory allocated to coord_map if not needed
 		if (! save_mapping_flag[0])
 			std::vector<float>().swap(output_raster_coord_map);
@@ -774,7 +777,7 @@ bool get_ortho_grid_worker (std::string outputRasterName, double *start_lon, dou
 		if (outputDataType == GDT_Int16)
 		{   
             std::cout << "aaaa" << std::endl;          
-			std::vector<int16_t> outBandsAsArray(nbands*outputWidth*outputHeight, dst_nodata_int);
+			std::vector<int16_t> outBandsAsArray(nbands * outputWidth *outputHeight, dst_nodata_int);
 			//printf("\nCreating output ortho grid\n");
 			bool flag = createOrthoImage(start_row_final, end_row_final, start_col_final, end_col_final,
 										 ngrid_cols, valid, image_grid_col, image_grid_row,
@@ -806,7 +809,7 @@ bool get_ortho_grid_worker (std::string outputRasterName, double *start_lon, dou
 		else if (outputDataType == GDT_UInt16)
 		{
 
-			std::vector<uint16_t> outBandsAsArray(nbands*outputWidth*outputHeight, dst_nodata_int);
+			std::vector<uint16_t> outBandsAsArray(nbands * outputWidth * outputHeight, dst_nodata_int);
 			//printf("\nCreating output ortho grid\n");
 			bool flag = createOrthoImage(start_row_final, end_row_final, start_col_final, end_col_final,
 										 ngrid_cols, valid, image_grid_col, image_grid_row,
@@ -839,7 +842,7 @@ bool get_ortho_grid_worker (std::string outputRasterName, double *start_lon, dou
 		{
             std::cout << "bbbb" << std::endl;          
 
-			std::vector<uint8_t> outBandsAsArray(nbands*outputWidth*outputHeight, dst_nodata_int);
+			std::vector<uint8_t> outBandsAsArray(nbands * outputWidth * outputHeight, dst_nodata_int);
 			//printf("\nCreating output ortho grid\n");
 			bool flag = createOrthoImage(start_row_final, end_row_final, start_col_final, end_col_final,
 										 ngrid_cols, valid, image_grid_col, image_grid_row,
@@ -872,7 +875,7 @@ bool get_ortho_grid_worker (std::string outputRasterName, double *start_lon, dou
 		{
             std::cout << "cccc" << std::endl;          
 
-			std::vector<float> outBandsAsArray(nbands*outputWidth*outputHeight, dst_nodata_int);
+			std::vector<float> outBandsAsArray(nbands * outputWidth * outputHeight, dst_nodata_int);
 			//printf("\nCreating output ortho grid\n");
 			bool flag = createOrthoImage(start_row_final, end_row_final, start_col_final, end_col_final,
 										 ngrid_cols, valid, image_grid_col, image_grid_row,
@@ -905,7 +908,7 @@ bool get_ortho_grid_worker (std::string outputRasterName, double *start_lon, dou
 		{
             std::cout << "dddd" << std::endl;          
 
-			std::vector<double> outBandsAsArray(nbands*outputWidth*outputHeight, dst_nodata_int);
+			std::vector<double> outBandsAsArray(nbands * outputWidth * outputHeight, dst_nodata_int);
 			//printf("\nCreating output ortho grid\n");
 			bool flag = createOrthoImage(start_row_final, end_row_final, start_col_final, end_col_final,
 										 ngrid_cols, valid, image_grid_col, image_grid_row,
