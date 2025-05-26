@@ -8,7 +8,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends build-essential git fish && rm -rf /var/lib/apt/lists/*
 
-COPY . ./
+#COPY . ./
 
 #RUN apt-get update && apt-get install -y --no-install-recommends gdal-bin libgdal-dev python3-gdal libboost-program-options-dev
 
@@ -18,7 +18,7 @@ RUN conda create -n gwarp_pp python=3.10 -y
 
 RUN conda run -n gwarp_pp conda install --channel=conda-forge --quiet --yes gdal=3.6.2
 
-RUN conda run -n gwarp_pp bash compile.sh
+#RUN conda run -n gwarp_pp bash compile.sh
 
 RUN conda run -n gwarp_pp conda install pyproj scipy conda-forge::opencv
 
