@@ -776,7 +776,7 @@ bool get_ortho_grid_worker (std::string outputRasterName, double *start_lon, dou
 
 		if (outputDataType == GDT_Int16)
 		{   
-            std::cout << "aaaa" << std::endl;          
+            //std::cout << "aaaa" << std::endl;          
 			std::vector<int16_t> outBandsAsArray(nbands * outputWidth *outputHeight, dst_nodata_int);
 			//printf("\nCreating output ortho grid\n");
 			bool flag = createOrthoImage(start_row_final, end_row_final, start_col_final, end_col_final,
@@ -840,7 +840,7 @@ bool get_ortho_grid_worker (std::string outputRasterName, double *start_lon, dou
 		}
 		else if (outputDataType == GDT_Byte)
 		{
-            std::cout << "bbbb" << std::endl;          
+            //std::cout << "bbbb" << std::endl;          
 
 			std::vector<uint8_t> outBandsAsArray(nbands * outputWidth * outputHeight, dst_nodata_int);
 			//printf("\nCreating output ortho grid\n");
@@ -957,7 +957,7 @@ bool get_ortho_grid_worker (std::string outputRasterName, double *start_lon, dou
 
 		// destroy variables on heap
 		delete rpcinfo;
-		printf("\nFinished processing block aaa # %d\n", block_idx[0]);
+		printf("\nFinished processing block # %d\n", block_idx[0]);
 		return 1;
 	}
 	catch(std::exception &err)

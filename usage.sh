@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
 set -e
-#dir_data=/data/jax_214_all_ba_including_config
-dir_data=/data/jax_068_crop_ba_rgb_part
+#dir_data=/data/jax/jax_214_all_ba_including_config
+if [ -n "$1" ]; then
+    dir_data="$1"
+else
+    dir_data=/data/jax/jax_068_crop_ba_rgb_part
+fi
 path_dsm=${dir_data}/s2p_out/dsm.tif
 #path_dem=${dir_data}/s2p_out/dem_fake.tif
 dir_out=./output
