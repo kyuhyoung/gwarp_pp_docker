@@ -6,6 +6,7 @@ if [ -n "$1" ]; then
 else
     dir_data=/data/jax/jax_068_crop_ba_rgb_part
 fi
+echo "dir_data $dir_data"
 path_dsm=${dir_data}/s2p_out/dsm.tif
 #path_dem=${dir_data}/s2p_out/dem_fake.tif
 dir_out=./output
