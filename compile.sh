@@ -14,6 +14,7 @@
 # Date: 11/24/2020
 
 set -e
+set -x
 
 LIB_DIR=$CONDA_PREFIX/lib/
 
