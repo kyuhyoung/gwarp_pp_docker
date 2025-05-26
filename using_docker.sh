@@ -2,10 +2,12 @@
 docker_name=gwarp
 dir_cur=/workspace/${PWD##*/}
 #dir_data=/mnt/hdd_16tb/dataset_stereo/zy3_sat_stereo_image/Sainte-Maxime/
-dir_data=/mnt/hdd_16tb/dataset_stereo/dabeeo/data_from_john
+dir_data=/home/kevin-sosa/work/etc/gwarp_pp_docker/data
+#dir_data=/mnt/hdd_16tb/dataset_stereo/dabeeo/data_from_john
 #dir_data=/home/kevin-sosa/Downloads/test_block_07044/
+
+####################################################################################
 #: << 'END'
-##########################################################################################
 #   docker build
 docker buildx build --platform linux/amd64 --force-rm --shm-size=64g -t ${docker_name} -f docker_file/Dockerfile_${docker_name} .
 #END

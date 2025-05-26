@@ -109,7 +109,8 @@ def batch_orthorectify(folder_img, folder_rpc, dsm_file, dem_file,
         folder_rpc = remove_trailing_slash(folder_rpc)
         check_if_exists(folder_rpc)
     check_if_exists(dsm_file)
-    check_if_exists(dem_file)
+    #print(f'dem_file : {dem_file}');    exit()
+    #check_if_exists(dem_file)
     if dsm_mask_file is not None:
         check_if_exists(dsm_mask_file)
     
@@ -197,6 +198,7 @@ def batch_orthorectify(folder_img, folder_rpc, dsm_file, dem_file,
         mypool.map(call_ortho, input_mp_list)
         mypool.close()
     else:
+        #print(f'input_mp_list : {input_mp_list}');  exit()
         for input_mp in input_mp_list:
             call_ortho(input_mp)            
     
@@ -213,7 +215,8 @@ if __name__ == '__main__':
     parser.add_argument('-folder_img', '--folder_img', type = str, help = 'folder_img', required = True)
     parser.add_argument('-folder_rpc', '--folder_rpc', type = str, help = 'folder_rpc', default = None)
     parser.add_argument('-dsm_file', '--dsm_file', type = str, help = 'dsm_file', required = True)
-    parser.add_argument('-dem_file', '--dem_file', type = str, help = 'dem_file', required = True)
+    #parser.add_argument('-dem_file', '--dem_file', type = str, help = 'dem_file', required = True)
+    parser.add_argument('-dem_file', '--dem_file', type = str, help = 'dem_file')
     parser.add_argument('-folder_output', '--folder_output', type = str, help = 'output folder', required = True)
     parser.add_argument('-cache_dir', '--cache_dir', type = str, help = 'cache_dir', required = True)
     parser.add_argument('-inside_docker', '--inside_docker', action="store_true", help = 'Is in a docker container')

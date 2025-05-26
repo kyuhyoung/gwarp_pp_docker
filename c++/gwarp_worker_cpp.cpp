@@ -24,6 +24,32 @@ Date: 11/24/2020
 #include <boost/program_options.hpp> // for nice argument parsing
 #include <vector>
 #include <cstdint> //uint16_t
+#include <unordered_map>
+#include <algorithm>
+
+#include <typeinfo>    // for std::type_info, typeid()
+#ifdef __GNUG__
+#  include <cxxabi.h> // for __cxa_demangle
+#  include <memory>
+#endif
+
+template<typename T>
+std::string type_name(const T& x) {
+    const std::type_info& ti = typeid(x);
+    #ifdef __GNUG__
+        int status = 0;
+        // demangle() returns a malloc’d C-string
+        std::unique_ptr<char,void(*)(void*)> demangled {
+            abi::__cxa_demangle(ti.name(), nullptr, nullptr, &status), std::free
+        };
+        return (status==0 ? demangled.get() : ti.name());
+    #else
+        return ti.name();  // on MSVC this is already unmangled
+    #endif
+}
+
+
+
 
 void convert_pixel_coords_to_projected_coords(double col, double row, std::vector<double> geotransform, std::vector <double>&  proj_x_y)
 {
@@ -55,19 +81,20 @@ bool createOrthoImage(int start_row_final, int end_row_final, int start_col_fina
 					  std::vector<float>& output_raster_coord_map, bool save_mapping_flag)
 {
 	//#pragma omp parallel for // Causes segmentation fault for large array
-	int x,y, twod_idx, clip_twod_idx, agnostic_idx;
+	//std::cout << "image_interpolate_method : " << image_interpolate_method << std::endl;    exit(0);
+    int x,y, twod_idx, clip_twod_idx, agnostic_idx;
 	float w_x, w_y, x_f, y_f;
 	T img00, img01, img10, img11;
 	int x0, x1, y0, y1;
 	int lookup_idx;
 	int readflag;
 	double imgval;
-
+    int n_val = 0, n_inval = 0;
 	for (int j = start_row_final; j < end_row_final; j++)
 	{
 		for (int i = start_col_final; i < end_col_final; i++)
 		{
-			twod_idx = (j*ngrid_cols) + i;
+			twod_idx = (j * ngrid_cols) + i;
 			if (valid[twod_idx])
 			{
 				agnostic_idx = ((j - start_row_final)*outputWidth) + (i - start_col_final);
@@ -79,21 +106,23 @@ bool createOrthoImage(int start_row_final, int end_row_final, int start_col_fina
 
 				x = image_grid_col[twod_idx];
 				y = image_grid_row[twod_idx];
-				lookup_idx = (x*image_pre_ortho_height) + y;
+				lookup_idx = (x * image_pre_ortho_height) + y;
 				if ( (lookup[lookup_idx] - height[twod_idx]) > height_thresh_filter_metres )
 				{
 					valid[twod_idx] = 0;
+                    n_inval++;
 				}
 				else
 				{
+                    n_val++;
 					if (save_mapping_flag)
-						output_raster_coord_map[agnostic_idx + 2*(outputWidth*outputHeight)] =  1;
+						output_raster_coord_map[agnostic_idx + 2 * (outputWidth * outputHeight)] =  1;
 
 					if (image_interpolate_method == "near")
 					{
 						for (int bandIdx = 1; bandIdx <= nbands; bandIdx++)
 						{
-							clip_twod_idx = ((bandIdx -1)*outputWidth*outputHeight) + ((j - start_row_final)*outputWidth) + (i - start_col_final);
+							clip_twod_idx = ((bandIdx -1) * outputWidth * outputHeight) + ((j - start_row_final) * outputWidth) + (i - start_col_final);
 							readflag = poRasterDataset->GetRasterBand(bandIdx)->RasterIO(GF_Read, x, y, 1, 1, &outBandsAsArray[clip_twod_idx], 1, 1, outputDataType, 0, 0);
 						}
 					}
@@ -135,6 +164,7 @@ bool createOrthoImage(int start_row_final, int end_row_final, int start_col_fina
 
 							imgval = ( (((double)(img00))*(1.0 - w_x)*(1.0 - w_y)) + (((double)(img01))*w_x*(1.0 - w_y)) +
 									   (((double)(img10))*(1.0 - w_x)*w_y) + (((double)(img11))*w_x*w_y) );
+                            //std::cout << "imgval : " << imgval << std::endl;    exit(0);             
 
 							/*if (outputDataType == GDT_Int16 ||  outputDataType == GDT_UInt16 || outputDataType == GDT_Int32
 									|| outputDataType == GDT_Byte || outputDataType == GDT_UInt32)
@@ -149,9 +179,13 @@ bool createOrthoImage(int start_row_final, int end_row_final, int start_col_fina
 
 				}
 			}
-
+            else
+            {
+                n_inval++;
+            }
 		}
 	}
+    //std::cout << "n_val : " << n_val << ", n_inval : " << n_inval << std::endl; exit(0);
 
 	return 1;
 
@@ -296,6 +330,13 @@ bool get_ortho_grid_worker (std::string outputRasterName, double *start_lon, dou
 			std::cout << "ERROR IN OPENING DEM DATASET" << std::endl;
 			abort();
 		}
+		// The dem can have no data value as negative integers if it is stored as uint16.
+		double no_data_height_value = (double)poDemDataset->GetRasterBand(1)->GetNoDataValue();
+		// Height and width of dem
+		int dem_width = poDemDataset->GetRasterXSize();
+		int dem_height = poDemDataset->GetRasterYSize();
+        GDALRasterBand  *poDemBand;
+        poDemBand = poDemDataset->GetRasterBand( 1 );
 
 		poMaskDemDataset = NULL;
 		if (dem_mask_file != "None")
@@ -308,7 +349,7 @@ bool get_ortho_grid_worker (std::string outputRasterName, double *start_lon, dou
 				abort();
 			}
 		}
-
+        double H_most = no_data_height_value;
 		poDtmDataset = NULL;
 		if (dtm_file != "None")
 		{
@@ -320,15 +361,79 @@ bool get_ortho_grid_worker (std::string outputRasterName, double *start_lon, dou
 				abort();
 			}
 		}
+        else
+        {
+            std::cout << "dem_width : " << dem_width << ", dem_height : " << dem_height << std::endl;    //exit(0);
+            // Read entire DEM into a flat vector
+            std::vector<double> dem_values(dem_width * dem_height);
+            int readflag = poDemBand->RasterIO(
+                GF_Read,
+                0, 0, dem_width, dem_height,
+                dem_values.data(),
+                dem_width, dem_height,
+                GDT_Float64,
+                0, 0
+            );
+            size_t nan_count = std::count_if(
+                dem_values.begin(), dem_values.end(),
+                [](double x){ return std::isnan(x); }
+            );
+            //std::cout << "Number of NaNs: " << nan_count << " / " << dem_values.size() << std::endl;   exit(0);    //  536015 / 1782852
+            //std::cout << "readflag : " << readflag << std::endl;    exit(0);
+            double minV =  std::numeric_limits<double>::infinity(), maxV = -std::numeric_limits<double>::infinity();
 
+            // Flag to detect if we saw at least one non-NaN
+            bool found = false;
+            for (double x : dem_values) {
+                if (std::isnan(x))
+                    continue;
+                if (!found) {
+                    // first valid value
+                    minV = maxV = x;
+                    found = true;
+                } 
+                else {
+                    if (x < minV) minV = x;
+                    if (x > maxV) maxV = x;
+                }
+            }
+            if (found) {
+                std::cout << "min (excluding NaN) = " << minV << ", max (excluding NaN) = " << maxV << "\n";
+            }
+            else {
+                std::cout << "No valid (non-NaN) entries in vector.\n";
+            }
+            //exit(0);
+            double minF = std::floor(minV);
+            double binSize = 0.5;
+            // 2) Create a map from binIndex -> count
+            std::unordered_map<int,int> binCounts;
+            for (double v : dem_values) {
+                if (v == no_data_height_value || std::isnan(v))
+                    continue;
+                int binIdx = int(std::floor((v - minF)/ binSize));
+                ++binCounts[binIdx];
+            }
 
-		// Height and width of dem
-		int dem_width = poDemDataset->GetRasterXSize();
-		int dem_height = poDemDataset->GetRasterYSize();
+            // 3) Find the bin with the max count
+            int bestBin = 0, bestCount = 0;
+            for (auto &p : binCounts) {
+                if (p.second > bestCount) {
+                    bestCount = p.second;
+                    bestBin   = p.first;
+                }
+            }
+            //std::cout << "bestBin : " << bestBin << ", bestCount : " << bestCount << std::endl;  exit(0);     //  bestBin : 57, bestCount : 139706
+            // 4) Recover an H_most value — for simplicity, take the bin center
+            H_most = (bestBin + 0.5) * binSize;
+            //H_most = minV;
+            //std::cout << "H_most : " << H_most << std::endl;    exit(0);    // 28.75
+        }
 
+        /*
 		// The dem can have no data value as negative integers if it is stored as uint16.
 		double no_data_height_value = (double)poDemDataset->GetRasterBand(1)->GetNoDataValue();
-
+        */
 		/* Declaring it as GDALRPCInfo rpcinfo could blow out the stack memory */
 		GDALRPCInfo *rpcinfo = new GDALRPCInfo;
 		char *papszOptions = NULL;
@@ -366,7 +471,7 @@ bool get_ortho_grid_worker (std::string outputRasterName, double *start_lon, dou
 
         /* Skip if dsm does not cover block. Otherwise the rpc transformer assumes
          * 0 for NaNs and creates ghosts at the boundaries of the dem and the image.*/
-        std::cout << "start_lon[0] : " << start_lon[0] << ", start_lat[0] : " << start_lat[0] << ", dem_top_left_lon_lat[0] : " << dem_top_left_lon_lat[0] << ", dem_top_left_lon_lat[1] : " << dem_top_left_lon_lat[1] << std::endl;    exit(0);
+        std::cout << "start_lon[0] : " << start_lon[0] << ", start_lat[0] : " << start_lat[0] << ", dem_top_left_lon_lat[0] : " << dem_top_left_lon_lat[0] << ", dem_top_left_lon_lat[1] : " << dem_top_left_lon_lat[1] << std::endl;    //exit(0);
         if (start_lon[0] < dem_top_left_lon_lat[0] || start_lat[0] > dem_top_left_lon_lat[1])
 		{
             printf("\nDEM does not cover block (start_lon,start_lat=%lf,%lf dem_corners=%lf,%lf)\n", start_lon[0], start_lat[0], dem_top_left_lon_lat[0], dem_top_left_lon_lat[1]);
@@ -419,10 +524,10 @@ bool get_ortho_grid_worker (std::string outputRasterName, double *start_lon, dou
         double lon;
         double lat;
 
-
+        /*
         GDALRasterBand  *poDemBand;
         poDemBand = poDemDataset->GetRasterBand( 1 );
-
+        */
         GDALRasterBand *poMaskDemBand;
         if ( dem_mask_file != "None" )
         {
@@ -432,13 +537,23 @@ bool get_ortho_grid_worker (std::string outputRasterName, double *start_lon, dou
         GDALRasterBand *poDtmBand;
 		std::vector<double> dtmGeoTransform(6,0);
 		double no_data_dtm_value;
+ 		int dtm_width, dtm_height;
+        //std::cout << "bbbb" << std::endl;  //exit(0); 
         if ( dtm_file != "None" )
         {
         	poDtmBand = poDtmDataset->GetRasterBand( 1 );
     		poDtmDataset->GetGeoTransform(&dtmGeoTransform[0]);
     		no_data_dtm_value = (double)poDtmBand->GetNoDataValue();
+        		// Height and width of dtm
+		    dtm_width = poDtmDataset->GetRasterXSize();
+		    dtm_height = poDtmDataset->GetRasterYSize();
         }
-
+		else
+        {
+        // Height and width of dtm
+		    dtm_width = dem_width;  dtm_height = dem_height;
+    		no_data_dtm_value = no_data_height_value;
+        }
         int image_pre_ortho_width = poRasterDataset->GetRasterXSize();
         int image_pre_ortho_height = poRasterDataset->GetRasterYSize();
         int nbands = poRasterDataset->GetRasterCount();
@@ -461,11 +576,12 @@ bool get_ortho_grid_worker (std::string outputRasterName, double *start_lon, dou
         int16_t dtm_height_val;
         double dtm_col;
         double dtm_row;
-
+        int n_val = 0, n_inval = 0;
+        /*
 		// Height and width of dtm
 		int dtm_width = poDtmDataset->GetRasterXSize();
 		int dtm_height = poDtmDataset->GetRasterYSize();
-
+        */
 		//#pragma omp parallel for // Causes segmentation fault for large array
 		for (int j = 0; j < ngrid_rows; j++)
 		{
@@ -480,10 +596,13 @@ bool get_ortho_grid_worker (std::string outputRasterName, double *start_lon, dou
 
 				if ( dem_col < 0 ||  dem_col >= dem_width || dem_row < 0 ||  dem_row >= dem_height)
 				{
+                    n_inval++;
 					continue;
+
 				}
 				else
 				{
+                    n_val++;
 					readflag = poDemBand->RasterIO(GF_Read, floor(dem_col), floor(dem_row), 1, 1, &height[twod_idx], 1, 1, GDT_Float64, 0, 0);
 
 					if ( dem_mask_file != "None" )
@@ -499,9 +618,10 @@ bool get_ortho_grid_worker (std::string outputRasterName, double *start_lon, dou
 
 					if (height[twod_idx] != no_data_height_value && ! std::isnan(height[twod_idx]))
 					{
-
-						if ( dtm_file != "None ")
-						{
+                        //std::cout << "type_name(dtm_file) : " << type_name(dtm_file) << std::endl;    exit(0);
+						if ( dtm_file != "None")
+						{   
+                            //std::cout << "aaaaa" << std::endl;  exit(0);
 							// Load height value from dtm and calculate num_wallpts accordingly
 							convert_projected_coords_to_pixel_coords(lon, lat, dtmGeoTransform, &dtm_col, &dtm_row);
 
@@ -528,6 +648,36 @@ bool get_ortho_grid_worker (std::string outputRasterName, double *start_lon, dou
 								}
 							}
 						}
+                        else
+                        {
+                            //std::cout << "bbbbb" << std::endl;  exit(0);
+                            // No DTM file → use DEM height or H_most
+                            double H_dem = height[twod_idx];
+                            if ( H_dem == no_data_height_value
+                                || std::isnan(H_dem)
+                                || H_dem > H_most )
+                            {
+                                dtm_height_val = H_most;
+                            }
+                            else
+                            {
+                                dtm_height_val = H_dem;
+                            }
+							if ((double) dtm_height_val == no_data_dtm_value || std::isnan(dtm_height_val)) // check if we have valid dtm value
+							{
+								std::cout << "WARNING NO DTM FOUND FOR LON: " << lon << " , LAT: " << lat << std::endl;
+								std::cout << "WARNING NO DTM FOUND FOR LON: " << dtm_col << " , LAT: " << dtm_row << std::endl;
+								std::cout << "WARNING NO DTM FOUND : " << dtm_height_val <<  std::endl;
+							}
+							else if (1.0*(double)(dtm_height_val) < height[twod_idx]) // check if dem > dtm. If so update num_wallpts
+							{
+								num_wallpts = ceil((height[twod_idx] - (1.0*(double)(dtm_height_val)))/wall_step_size);
+								if (num_wallpts <= 0)
+								{
+									num_wallpts = 1;
+								}
+							}
+                        }
 						//std::cout << num_wallpts << std::endl;
 				        std::vector<double> height_walls(num_wallpts, 0);
 				        std::vector<double> lon_walls(num_wallpts, 0);
@@ -590,6 +740,8 @@ bool get_ortho_grid_worker (std::string outputRasterName, double *start_lon, dou
 			}
 
 		}
+        
+        //std::cout << "n_inval : " << n_inval << ", n_val : " << n_val << std::endl; exit(0);
 
 		if (!valid_flag)
 		{
@@ -601,7 +753,7 @@ bool get_ortho_grid_worker (std::string outputRasterName, double *start_lon, dou
 		int outputHeight = end_row_final - start_row_final;
 
 		GDALDataType outputDataType = poRasterDataset->GetRasterBand(1)->GetRasterDataType();
-        //std::cout << "outputDataType : " << outputDataType << std::endl; exit(0);
+        //std::cout << "outputDataType b4 : " << outputDataType << std::endl; //exit(0);
 		//printf("%s",GDALGetDataTypeName(outputDataType));
 		int dst_nodata_int = (int) dst_nodata[0];
 
@@ -614,7 +766,9 @@ bool get_ortho_grid_worker (std::string outputRasterName, double *start_lon, dou
 				outputDataType = GDT_Int16;
 		}
 
-		std::vector<float> output_raster_coord_map(3*outputWidth*outputHeight, (float)dst_nodata[0]);
+        //std::cout << "outputDataType after : " << outputDataType << std::endl; //exit(0);
+        //std::cout << "nbands : " << nbands << std::endl; exit(0);
+		std::vector<float> output_raster_coord_map(3 * outputWidth * outputHeight, (float)dst_nodata[0]);
 		// free memory allocated to coord_map if not needed
 		if (! save_mapping_flag[0])
 			std::vector<float>().swap(output_raster_coord_map);
@@ -623,7 +777,7 @@ bool get_ortho_grid_worker (std::string outputRasterName, double *start_lon, dou
 		if (outputDataType == GDT_Int16)
 		{   
             std::cout << "aaaa" << std::endl;          
-			std::vector<int16_t> outBandsAsArray(nbands*outputWidth*outputHeight, dst_nodata_int);
+			std::vector<int16_t> outBandsAsArray(nbands * outputWidth *outputHeight, dst_nodata_int);
 			//printf("\nCreating output ortho grid\n");
 			bool flag = createOrthoImage(start_row_final, end_row_final, start_col_final, end_col_final,
 										 ngrid_cols, valid, image_grid_col, image_grid_row,
@@ -655,7 +809,7 @@ bool get_ortho_grid_worker (std::string outputRasterName, double *start_lon, dou
 		else if (outputDataType == GDT_UInt16)
 		{
 
-			std::vector<uint16_t> outBandsAsArray(nbands*outputWidth*outputHeight, dst_nodata_int);
+			std::vector<uint16_t> outBandsAsArray(nbands * outputWidth * outputHeight, dst_nodata_int);
 			//printf("\nCreating output ortho grid\n");
 			bool flag = createOrthoImage(start_row_final, end_row_final, start_col_final, end_col_final,
 										 ngrid_cols, valid, image_grid_col, image_grid_row,
@@ -688,7 +842,7 @@ bool get_ortho_grid_worker (std::string outputRasterName, double *start_lon, dou
 		{
             std::cout << "bbbb" << std::endl;          
 
-			std::vector<uint8_t> outBandsAsArray(nbands*outputWidth*outputHeight, dst_nodata_int);
+			std::vector<uint8_t> outBandsAsArray(nbands * outputWidth * outputHeight, dst_nodata_int);
 			//printf("\nCreating output ortho grid\n");
 			bool flag = createOrthoImage(start_row_final, end_row_final, start_col_final, end_col_final,
 										 ngrid_cols, valid, image_grid_col, image_grid_row,
@@ -721,7 +875,7 @@ bool get_ortho_grid_worker (std::string outputRasterName, double *start_lon, dou
 		{
             std::cout << "cccc" << std::endl;          
 
-			std::vector<float> outBandsAsArray(nbands*outputWidth*outputHeight, dst_nodata_int);
+			std::vector<float> outBandsAsArray(nbands * outputWidth * outputHeight, dst_nodata_int);
 			//printf("\nCreating output ortho grid\n");
 			bool flag = createOrthoImage(start_row_final, end_row_final, start_col_final, end_col_final,
 										 ngrid_cols, valid, image_grid_col, image_grid_row,
@@ -754,7 +908,7 @@ bool get_ortho_grid_worker (std::string outputRasterName, double *start_lon, dou
 		{
             std::cout << "dddd" << std::endl;          
 
-			std::vector<double> outBandsAsArray(nbands*outputWidth*outputHeight, dst_nodata_int);
+			std::vector<double> outBandsAsArray(nbands * outputWidth * outputHeight, dst_nodata_int);
 			//printf("\nCreating output ortho grid\n");
 			bool flag = createOrthoImage(start_row_final, end_row_final, start_col_final, end_col_final,
 										 ngrid_cols, valid, image_grid_col, image_grid_row,
