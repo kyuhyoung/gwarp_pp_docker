@@ -9,7 +9,7 @@ fi
 #echo "dir_data $dir_data"
 path_dsm=${dir_data}/s2p_out/dsm.tif
 #path_dem=${dir_data}/s2p_out/dem_fake.tif
-dir_out=./output
+dir_out=$dir_data/gwarp_out
 dir_cache=./cache
 
 rm -rf $dir_cache
