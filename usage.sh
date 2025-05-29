@@ -12,7 +12,7 @@ if [ -n "$2" ]; then
 else
     val_no_data=0
 fi
-
+echo "val_no_data : $val_no_data"
 
 #echo "dir_data $dir_data"
 path_dsm=${dir_data}/s2p_out/dsm.tif
