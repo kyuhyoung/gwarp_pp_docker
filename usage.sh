@@ -6,6 +6,14 @@ if [ -n "$1" ]; then
 else
     dir_data=/data/jax/jax_068_crop_ba_rgb_part
 fi
+
+if [ -n "$2" ]; then
+    val_no_data="$2"
+else
+    val_no_data=0
+fi
+
+
 #echo "dir_data $dir_data"
 path_dsm=${dir_data}/s2p_out/dsm.tif
 #path_dem=${dir_data}/s2p_out/dem_fake.tif
@@ -14,7 +22,7 @@ dir_cache=./cache
 
 rm -rf $dir_cache
 
-echo "aaa"
+#echo "aaa"
 bash compile.sh
-echo "bbb"
-python orthorectify.py -folder_img $dir_data -folder_rpc $dir_data -dsm_file $path_dsm -folder_output $dir_out -cache_dir $dir_cache -nodata 0 # -dem_file $path_dem 
+#echo "bbb"
+python orthorectify.py -folder_img $dir_data -folder_rpc $dir_data -dsm_file $path_dsm -folder_output $dir_out -cache_dir $dir_cache -nodata $val_no_data # -dem_file $path_dem 
